@@ -29,15 +29,11 @@ This document outlines the security measures implemented in the AI-ROS-based aut
 
 ### Real-time Monitoring
 - **System Health Monitoring**: Continuous monitoring of system performance
-- **Network Traffic Analysis**: Detection of unusual communication patterns
-- **Process Monitoring**: Identification of unauthorized system processes
 - **Resource Usage Analysis**: Detection of abnormal resource consumption
 
 ### Security Event Logging
 - **Comprehensive Logging**: Detailed logs of all security-relevant events
 - **Log Integrity Protection**: Cryptographic protection of log files
-- **Automated Analysis**: Pattern recognition for security incident detection
-- **Incident Response**: Automated response to detected security threats
 
 ### Legal Compliance
 - **Regulatory Adherence**: Compliance with all applicable laws and regulations
