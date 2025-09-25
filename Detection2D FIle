@@ -1,0 +1,7 @@
+# Detection2D.msg
+float32 x_center  # x coordinate of detection center
+float32 y_center  # y coordinate of detection center
+float32 width     # width of bounding box
+float32 height    # height of bounding box
+float32 confidence # detection confidence
+string class_name  # class name of detected object
