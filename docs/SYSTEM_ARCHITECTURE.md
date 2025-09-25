@@ -47,3 +47,61 @@ The system follows a modular, distributed architecture enabling:
 - **/mavros/state**: Flight controller status and mode information
 
 ### Message Flow Design
+``` RealSense Node → Image Topics → YOLO Node → Detection Topics → Avoidance Node → Command Topics → MAVROS Node → MAVLink Protocol
+```
+
+## Safety Architecture
+
+### Multi-level Safety Design
+
+**Hardware Level**
+- Physical emergency stop capabilities
+- Hardware watchdog timers
+- Power management and monitoring
+
+**Software Level**
+- Process isolation and containerization
+- Exception handling and error recovery
+- Graceful degradation on component failure
+
+**System Level**
+- Mission state preservation during interruptions
+- Automatic recovery and resumption protocols
+- Comprehensive logging and audit trails
+
+### Fail-safe Mechanisms
+
+**Communication Failures**
+- Timeout detection and recovery
+- Alternative communication pathways
+- Emergency landing procedures
+
+**Sensor Failures**
+- Redundant sensor validation
+- Graceful degradation modes
+- Safe operational boundaries
+
+**Processing Failures**
+- Watchdog timer implementation
+- Process restart mechanisms
+- Error state propagation
+
+## Performance Optimization
+
+### Real-time Constraints
+- Deterministic processing pipelines
+- Priority-based task scheduling
+- Memory pre-allocation strategies
+- Cache-optimized data structures
+
+### Resource Management
+- GPU memory optimization
+- CPU thread pool management
+- I/O bandwidth allocation
+- Power consumption monitoring
+
+### Scalability Design
+- Modular component interfaces
+- Plugin architecture support
+- Configuration-driven parameters
+- Version compatibility management
