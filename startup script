@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Source ROS
+source /opt/ros/noetic/setup.bash
+source ~/drone_ws/devel/setup.bash
+
+# Start roscore in background if not running
+if ! pgrep -x "rosmaster" > /dev/null; then
+    echo "Starting roscore..."
+    roscore &
+    sleep 5  # Give roscore time to start
+fi
+
+# Start MAVROS
+echo "Starting MAVROS..."
+gnome-terminal -- bash -c "roslaunch mavros apm.launch fcu_url:=/dev/ttyUSB0:115200; exec bash"
+sleep 5
+
+# Start RealSense Camera Node
+echo "Starting RealSense Camera Node..."
+gnome-terminal -- bash -c "source ~/drone_ws/devel/setup.bash; python3 ~/drone_ws/src/drone_vision/scripts/realsense_node.py; exec bash"
+sleep 5
+
+# Start MAVROS Controller Node
+echo "Starting MAVROS Controller Node..."
+gnome-terminal -- bash -c "source ~/drone_ws/devel/setup.bash; python3 ~/drone_ws/src/drone_vision/scripts/mavros_node.py; exec bash"
+sleep 5
+
+# Start Person Avoidance Node
+echo "Starting Person Avoidance Node..."
+gnome-terminal -- bash -c "source ~/drone_ws/devel/setup.bash; python3 ~/drone_ws/src/drone_vision/scripts/person_avoidance.py; exec bash"
+sleep 5
+
+# Start Status Monitor
+echo "Starting Status Monitor..."
+gnome-terminal -- bash -c "source ~/drone_ws/devel/setup.bash; python3 ~/drone_ws/src/drone_vision/scripts/status_monitor.py; exec bash"
+sleep 5
+
+# Activate YOLO environment and start YOLO node
+echo "Starting YOLO Node..."
+gnome-terminal -- bash -c "source ~/yolo/myenv/bin/activate; export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1; export PYTHONPATH=\$PYTHONPATH:~/yolo/myenv/lib/python3.8/site-packages; source ~/drone_ws/devel/setup.bash; python3 ~/drone_ws/src/drone_vision/scripts/yolo_node.py; exec bash"
+
+echo "All components started. Monitor each terminal for details."
