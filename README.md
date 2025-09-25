@@ -6,6 +6,15 @@ Deep learning drone obstacle avoidance for autonomous delivery and campus securi
 - Role: AUC Thesis Graduation Project
 - Status: Completed and Successfully Tested
  
+ ## Technical Skills Demonstrated
+
+**Programming Languages:** Python, C++, Bash scripting  
+**Frameworks:** ROS (Robot Operating System), PyTorch, OpenCV  
+**AI/ML:** YOLOv5 neural networks, real-time inference optimization  
+**Hardware Integration:** Embedded systems, UART communication, camera interfaces  
+**System Architecture:** Distributed systems, real-time processing, fail-safe design  
+**Development Tools:** Git, Linux, CUDA optimization  
+**Domain Expertise:** Robotics, computer vision, autonomous systems, flight control
 # Core Technology Stack
 ### Hardware Platform: 
 
