@@ -1,0 +1,22 @@
+# Core Dependencies
+rospy>=1.15.0
+numpy>=1.21.0
+opencv-python>=4.5.0
+torch>=1.9.0
+torchvision>=0.10.0
+ultralytics>=8.0.0
+
+# Hardware Interface
+pyrealsense2>=2.50.0
+
+# ROS Dependencies  
+geometry-msgs>=1.13.0
+sensor-msgs>=1.13.0
+std-msgs>=0.5.13
+mavros-msgs>=1.6.0
+
+# System Dependencies
+threading
+queue
+time
+math
