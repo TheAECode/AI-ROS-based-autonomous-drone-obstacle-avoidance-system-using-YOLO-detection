@@ -1,5 +1,10 @@
 # AI-ROS-based-autonomous-drone-obstacle-avoidance-system-using-YOLO-detection
- Deep learning drone obstacle avoidance for autonomous delivery and campus security surveillance that is YOLOv5-based, real-time person and obstacle detection with intelligent flight path replanning and seamless transition between Auto to Guided using QGC, and engineered with ROS/MAVROS integration ensures safe navigation in monitored zones.
+Deep learning drone obstacle avoidance for autonomous delivery and campus security surveillance that is YOLOv5-based, real-time person and obstacle detection with intelligent flight path replanning and seamless transition between Auto to Guided using QGC, and engineered with ROS/MAVROS integration ensures safe navigation in monitored zones.
+
+# Professional Portfolio Project
+- Timeline: 6 months, 2025
+- Role: AUC Thesis Graduation Project
+- Status: Completed and Successfully Tested
  
 # Core Technology Stack
 ### Hardware Platform: 
