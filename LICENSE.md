@@ -1,4 +1,4 @@
-Copyright (c) 2025 Abdelnaby Samy
+Copyright (c) 2025 AUTHOR of the Repo
 
 All rights reserved.
 
