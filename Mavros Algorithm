@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+
+import rospy
+import math
+from mavros_msgs.msg import State, PositionTarget, WaypointList, Waypoint
+from mavros_msgs.srv import CommandBool, SetMode, WaypointPull
+from geometry_msgs.msg import PoseStamped, Twist
+from std_msgs.msg import String, Bool
+from nav_msgs.msg import Odometry
+import threading
+import time
+
+class MAVROSNode:
+    def __init__(self):
+        rospy.init_node('mavros_controller', anonymous=True)
+        
+        # Initialize ALL state variables first - before setting up subscribers
+        self.original_mode = ""
+        self.current_state = State()
+        self.current_position = PoseStamped()
+        self.mission_waypoints = WaypointList()
+        self.obstacle_detected = False
+        self.avoidance_active = False
+        self.last_avoidance_cmd = None
+        self.last_avoidance_time = rospy.Time.now()
+        self.avoidance_timeout = rospy.Duration(1.0) # Timeout for returning to mission
+        self.rate = rospy.Rate(20) # 20Hz for stable control
+        self.mission_running = False
+        self.returning_to_mission = False
+        
+        # Wait for MAVROS to be available
+        rospy.wait_for_service('/mavros/cmd/arming')
+        rospy.wait_for_service('/mavros/set_mode')
+        
+        # Services
+        self.arming_client = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
+        self.set_mode_client = rospy.ServiceProxy('/mavros/set_mode', SetMode)
+        self.waypoint_pull_client = rospy.ServiceProxy('/mavros/mission/pull', WaypointPull)
+        
+        # Publishers
+        self.local_pos_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
+        self.setpoint_raw_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
+        self.status_pub = rospy.Publisher('/drone/status', String, queue_size=1)
+        self.avoidance_active_pub = rospy.Publisher('/drone/avoidance_active', Bool, queue_size=1)
+        
+        # Set up subscribers AFTER initializing all variables
+        self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_callback)
+        self.waypoints_sub = rospy.Subscriber('/mavros/mission/waypoints', WaypointList, self.waypoints_callback)
+        self.position_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.position_callback)
+        self.cmd_vel_sub = rospy.Subscriber('/cmd_vel', Twist, self.cmd_vel_callback)
+        self.obstacle_status_sub = rospy.Subscriber('/drone/obstacle_status', String, self.obstacle_status_callback)
+        
+        rospy.loginfo("MAVROS controller node initialized")
+    
+    def state_callback(self, msg):
+        """Callback for vehicle state updates"""
+        self.current_state = msg
+        status_msg = String()
+        status_msg.data = f"Connection: {msg.connected}, Mode: {msg.mode}, Armed: {msg.armed}"
+        self.status_pub.publish(status_msg)
+        
+        # Handle mode changes
+        if self.original_mode == "" and msg.mode in ["AUTO", "AUTO.MISSION"]:
+            self.original_mode = msg.mode
+            self.mission_running = True
+            rospy.loginfo(f"Mission running in {self.original_mode} mode")
+            
+        # Check if we've returned to mission mode
+        if self.returning_to_mission and msg.mode == self.original_mode:
+            rospy.loginfo("Successfully returned to mission mode")
+            self.returning_to_mission = False
+    
+    def position_callback(self, msg):
+        """Store current position"""
+        self.current_position = msg
+    
+    def waypoints_callback(self, msg):
+        """Store mission waypoints"""
+        self.mission_waypoints = msg
+        rospy.loginfo(f"Received {len(msg.waypoints)} mission waypoints")
+    
+    def obstacle_status_callback(self, msg):
+        """Process obstacle detection status"""
+        rospy.loginfo(f"Received obstacle status: {msg.data}")
+        
+        if "CRITICAL" in msg.data or "WARNING" in msg.data:
+            self.obstacle_detected = True
+            if not self.avoidance_active and self.mission_running:
+                self.activate_avoidance_mode()
+        elif "CLEAR" in msg.data:
+            self.obstacle_detected = False
+            if self.avoidance_active and rospy.Time.now() - self.last_avoidance_time > self.avoidance_timeout:
+                rospy.loginfo("Clear received and timeout passed, deactivating avoidance")
+                self.deactivate_avoidance_mode()
+            else:
+                rospy.loginfo(f"Clear received but timeout not passed: {(rospy.Time.now() - self.last_avoidance_time).to_sec()}s < {self.avoidance_timeout.to_sec()}s")
+    
+    def cmd_vel_callback(self, msg):
+        """Handle velocity commands from obstacle avoidance"""
+        if self.avoidance_active:
+            # Store last avoidance command and timestamp
+            self.last_avoidance_cmd = msg
+            self.last_avoidance_time = rospy.Time.now()
+            
+            # Convert Twist to PositionTarget (velocity control)
+            target = PositionTarget()
+            target.header.stamp = rospy.Time.now()
+            target.header.frame_id = "base_link"
+            
+            # Set up for velocity control
+            target.coordinate_frame = PositionTarget.FRAME_BODY_NED
+            target.type_mask = (
+                PositionTarget.IGNORE_PX | 
+                PositionTarget.IGNORE_PY | 
+                PositionTarget.IGNORE_PZ | 
+                PositionTarget.IGNORE_AFX | 
+                PositionTarget.IGNORE_AFY | 
+                PositionTarget.IGNORE_AFZ | 
+                PositionTarget.IGNORE_YAW_RATE
+            )
+            
+            # Apply velocity commands
+            target.velocity.x = msg.linear.x
+            target.velocity.y = msg.linear.y
+            target.velocity.z = msg.linear.z
+            target.yaw = math.nan # Keep current heading
+            
+            self.setpoint_raw_pub.publish(target)
+    
+    def activate_avoidance_mode(self):
+        """Switch to GUIDED mode for obstacle avoidance"""
+        if self.mission_running and not self.avoidance_active:
+            # Remember original mode
+            self.original_mode = self.current_state.mode
+            
+            # Switch to GUIDED mode for obstacle avoidance
+            rospy.loginfo("Obstacle detected! Switching to GUIDED mode for avoidance")
+            mode_result = self.set_mode_client(custom_mode="GUIDED")
+            if mode_result.success:
+                rospy.loginfo("Successfully switched to GUIDED mode")
+            else:
+                rospy.logerr("Failed to switch to GUIDED mode")
+                
+            self.avoidance_active = True
+            self.avoidance_active_pub.publish(Bool(True))
+            
+            # Publish status
+            status_msg = String()
+            status_msg.data = "ACTIVE: Obstacle avoidance mode"
+            self.status_pub.publish(status_msg)
+    
+    def deactivate_avoidance_mode(self):
+        """Return to mission mode after avoiding obstacle"""
+        if self.avoidance_active and not self.obstacle_detected:
+            rospy.loginfo(f"Obstacle cleared! Attempting to return to {self.original_mode} mode")
+            
+            # Try to switch mode and log the result
+            mode_result = self.set_mode_client(custom_mode=self.original_mode)
+            if mode_result.success:
+                rospy.loginfo(f"Mode switch to {self.original_mode} succeeded")
+            else:
+                rospy.logerr(f"Mode switch to {self.original_mode} FAILED")
+            
+            self.avoidance_active = False
+            self.avoidance_active_pub.publish(Bool(False))
+            self.returning_to_mission = True
+            
+            # Publish status
+            status_msg = String()
+            status_msg.data = f"RETURNING: Resuming mission in {self.original_mode} mode"
+            self.status_pub.publish(status_msg)
+    
+    def setup_connection(self):
+        """Initial setup and connection test"""
+        try:
+            # Wait for FCU connection
+            rospy.loginfo("Waiting for FCU connection...")
+            while not rospy.is_shutdown() and not self.current_state.connected:
+                self.rate.sleep()
+            
+            rospy.loginfo("FCU connected")
+            
+            # Pull mission waypoints
+            try:
+                self.waypoint_pull_client()
+                rospy.loginfo("Pulled mission waypoints from FCU")
+            except rospy.ServiceException as e:
+                rospy.logwarn(f"Failed to pull waypoints: {e}")
+            
+            rospy.loginfo("MAVROS node ready - waiting for mission start")
+            return True
+            
+        except Exception as e:
+            rospy.logerr(f"Setup failed: {e}")
+            return False
+    
+    def run(self):
+        """Main run loop"""
+        if self.setup_connection():
+            while not rospy.is_shutdown():
+                # Publish avoidance status for monitoring
+                self.avoidance_active_pub.publish(Bool(self.avoidance_active))
+                
+                # Check for timeouts in avoidance mode
+                if self.avoidance_active and rospy.Time.now() - self.last_avoidance_time > rospy.Duration(2.0):
+                    rospy.logwarn("Avoidance command timeout - checking if obstacle still present")
+                    rospy.loginfo(f"Current obstacle_detected state: {self.obstacle_detected}")
+                    
+                    if not self.obstacle_detected:
+                        rospy.loginfo("No obstacle detected, forcing deactivation")
+                        self.deactivate_avoidance_mode()
+                    elif rospy.Time.now() - self.last_avoidance_time > rospy.Duration(10.0):
+                        # Force deactivation after 10 seconds even if obstacle_detected is true
+                        rospy.logwarn("Forcing deactivation after extended timeout")
+                        self.obstacle_detected = False
+                        self.deactivate_avoidance_mode()
+                
+                self.rate.sleep()
+        else:
+            rospy.logerr("Failed to setup vehicle connection")
+
+if __name__ == '__main__':
+    try:
+        node = MAVROSNode()
+        node.run()
+    except rospy.ROSInterruptException:
+        pass
