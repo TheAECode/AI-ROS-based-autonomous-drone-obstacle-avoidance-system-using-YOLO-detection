@@ -1,0 +1,46 @@
+# ROS Build Files
+build/
+devel/
+logs/
+.catkin_workspace
+
+# Python Generated Files
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Development Environment
+.venv/
+venv/
+.env
+
+# Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Large Model Files
+*.pt
+*.weights
+*.onnx
+
+# Log Files
+*.log
+debug.log
+error.log
+
+# Documentation Build
+docs/_build/
+docs/build/
+
+# Backup Files
+*.bak
+*.backup
+*~
