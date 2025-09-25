@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+import rospy
+from custom_msgs.msg import Detection2D
+from std_msgs.msg import String
+from geometry_msgs.msg import Twist
+import time
+
+class PersonAvoidanceNode:
+    def __init__(self):
+        rospy.init_node('person_avoidance', anonymous=True)
+        
+        # Parameters
+        self.frame_width = 424  # Match camera resolution
+        self.frame_height = 240
+        self.distance_threshold = 0.25  # 25% of frame area
+        self.detection_timeout = 0.5  # seconds
+        self.confidence_threshold = 0.5
+        self.size_factor = 0
+        
+        # State tracking
+        self.last_detection_time = rospy.Time.now()
+        self.person_detected = False
+        
+        # Publishers
+        self.obstacle_status_pub = rospy.Publisher('/drone/obstacle_status', String, queue_size=1)
+        self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+        
+        # Subscribers
+        self.detection_sub = rospy.Subscriber('/yolo/detections', Detection2D, self.detection_callback)
+        
+        # Timer for regular status checks
+        rospy.Timer(rospy.Duration(0.2), self.check_detection_timeout)
+        
+        rospy.loginfo("Person avoidance node initialized")
+    
+    def detection_callback(self, msg):
+        """Process person detections from YOLO"""
+        if msg.class_name == "person" and msg.confidence > self.confidence_threshold:
+            # Calculate size factor (indicates approximate distance)
+            self.size_factor = (msg.width * msg.height) / (self.frame_width * self.frame_height)
+            
+            # Only activate if person is close enough
+            if self.size_factor > self.distance_threshold:
+                self.person_detected = True
+                self.last_detection_time = rospy.Time.now()
+                
+                # Send explicit hover command
+                hover_cmd = Twist()  # All values initialize to zero
+                hover_cmd.linear.x = 0
+                hover_cmd.linear.y = 0
+                hover_cmd.linear.z = 0.1  # Small upward velocity to maintain altitude
+                self.cmd_vel_pub.publish(hover_cmd)
+                
+                status_msg = String()
+                status_msg.data = f"WARNING: Person detected at close range"
+                self.obstacle_status_pub.publish(status_msg)
+                
+                rospy.loginfo(f"Person detected: size factor {self.size_factor:.3f}")
+    
+    def check_detection_timeout(self, event=None):
+        """Check if person detection has timed out"""
+        current_time = rospy.Time.now()
+        time_since_detection = (current_time - self.last_detection_time).to_sec()
+        
+        # If person was detected but timeout occurred
+        if self.person_detected and time_since_detection > self.detection_timeout:
+            rospy.loginfo(f"Person detection timed out after {time_since_detection:.2f}s")
+            self.person_detected = False
+            
+            # Send hover command with zero velocities
+            hover_cmd = Twist()
+            self.cmd_vel_pub.publish(hover_cmd)
+            
+            # Publish clear status - send multiple times to ensure delivery
+            status_msg = String()
+            status_msg.data = "CLEAR: No person detected"
+            
+            # Send the clear message multiple times to ensure it's received
+            for _ in range(3):
+                self.obstacle_status_pub.publish(status_msg)
+                rospy.sleep(0.05)
+            
+            rospy.loginfo("Person detection cleared - sent CLEAR message")
+        
+        # If no person is detected for a while, periodically send CLEAR messages
+        elif not self.person_detected and time_since_detection > 2.0:
+            # Resend CLEAR status every 2 seconds when idle
+            if (int(current_time.to_sec()) % 2) == 0:
+                status_msg = String()
+                status_msg.data = "CLEAR: No person detected"
+                self.obstacle_status_pub.publish(status_msg)
+    
+    def run(self):
+        """Main run loop"""
+        rate = rospy.Rate(10)
+        
+        # Send initial CLEAR status
+        status_msg = String()
+        status_msg.data = "CLEAR: No person detected"
+        self.obstacle_status_pub.publish(status_msg)
+        rospy.loginfo("Starting person avoidance - sent initial CLEAR status")
+        
+        while not rospy.is_shutdown():
+            # Periodically send velocity commands to avoid timeouts
+            if self.person_detected:
+                # Resend hover command to prevent command timeout
+                hover_cmd = Twist()
+                hover_cmd.linear.z = 0.1  # Small upward velocity
+                self.cmd_vel_pub.publish(hover_cmd)
+            
+            rate.sleep()
+
+if __name__ == '__main__':
+    try:
+        node = PersonAvoidanceNode()
+        node.run()
+    except rospy.ROSInterruptException:
+        pass
